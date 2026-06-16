@@ -1,18 +1,20 @@
-"""Main pipeline: fetch, validate, store."""
+"""Main pipeline: fetch CBS housing data, validate, transform, and store."""
 
 import logging
 import os
 import sys
+from datetime import datetime, timezone
+
+import pandas as pd
+import requests
+from pydantic import ValidationError
+
+from src.models import CBSHousingRecord
+from src.storage import insert_housing_records, upload_raw_json
 
 from dotenv import load_dotenv
 
 load_dotenv()
-
-import pandas as pd
-from pydantic import ValidationError
-
-from src.models import WeatherReading
-from src.storage import insert_readings, upload_raw_json
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -21,76 +23,148 @@ logging.basicConfig(
 logging.getLogger("azure").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
+DEFAULT_API_URL = "https://opendata.cbs.nl/ODataApi/odata/85792ENG/TypedDataSet"
+
 
 def fetch_data() -> list[dict]:
-    """Fetch data from your API. Replace this with your own logic."""
-    # TODO: Replace with your API call
-    # Example using requests:
-    #   response = requests.get("https://api.open-meteo.com/v1/forecast?...")
-    #   response.raise_for_status()
-    #   return response.json()["hourly"]
-    raise NotImplementedError("Replace this with your API call")
+    """Fetch housing purchase price records from the CBS OData API."""
+    api_url = os.environ.get("API_URL", DEFAULT_API_URL)
+
+    response = requests.get(api_url, timeout=30)
+    response.raise_for_status()
+
+    payload = response.json()
+    records = payload.get("value", [])
+
+    log.info("Fetched %d records from CBS API", len(records))
+    return records
 
 
-def validate(raw_records: list[dict]) -> list[WeatherReading]:
-    """Validate raw records using Pydantic models."""
+def validate(raw_records: list[dict]) -> tuple[list[CBSHousingRecord], list[dict]]:
+    """Validate raw CBS records and accumulate per-record errors."""
     valid = []
-    for record in raw_records:
+    errors = []
+
+    for index, record in enumerate(raw_records):
         try:
-            valid.append(WeatherReading(**record))
-        except ValidationError as e:
-            log.warning("Skipping invalid record: %s", e)
+            valid.append(CBSHousingRecord(**record))
+        except ValidationError as error:
+            errors.append(
+                {
+                    "index": index,
+                    "record": record,
+                    "errors": error.errors(),
+                }
+            )
     log.info("Validated %d / %d records", len(valid), len(raw_records))
-    return valid
+
+    if errors:
+        log.warning("Found %d invalid records", len(errors))
+
+    return valid, errors
 
 
-def transform(readings: list[WeatherReading]) -> pd.DataFrame:
-    """Convert validated records to a DataFrame and apply transformations.
+def transform(records: list[CBSHousingRecord]) -> pd.DataFrame:
+    """Transform validated CBS records using pandas.
 
-    This is where pandas earns its place. Replace the examples below with
-    transformations that make sense for your data.
+    Real transformation work:
+    - rename CBS technical column names
+    - parse year and quarter from Periods
+    - convert numeric columns
+    - handle null values
+    - add ingestion timestamp
     """
-    df = pd.DataFrame([r.model_dump() for r in readings])
+    df = pd.DataFrame([record.model_dump() for record in records])
 
-    # TODO: Replace these with your own transformations. Examples:
-    #
-    # Parse timestamp strings into proper datetime objects:
-    #   df["timestamp"] = pd.to_datetime(df["timestamp"])
-    #
-    # Derive a new column from existing data:
-    #   df["temp_fahrenheit"] = df["temperature"] * 9 / 5 + 32
-    #
-    # Drop rows where a required field is missing:
-    #   df = df.dropna(subset=["temperature"])
-    #
-    # Rename columns to match your Postgres table:
-    #   df = df.rename(columns={"timestamp": "recorded_at"})
+    df = df.rename(
+        columns={
+            "ID": "cbs_id",
+            "Regions": "region_code",
+            "Periods": "period",
+            "PriceIndexPurchasePrices_1": "price_index_purchase_prices",
+            "ChangesComparedToOnePeriodEarlier_2": "change_price_previous_period",
+            "ChangesComparedToOneYearEarlier_3": "change_price_previous_year",
+            "NumberOfDwellingsSold_4": "number_of_dwellings_sold",
+            "ChangesComparedToOnePeriodEarlier_5": "change_sales_previous_period",
+            "ChangesComparedToOneYearEarlier_6": "change_sales_previous_year",
+            "AveragePurchasePrice_7": "average_purchase_price",
+            "TotalValuePurchasePrices_8": "total_value_purchase_prices",
+        }
+    )
+
+    df["region_code"] = df["region_code"].astype(str).str.strip()
+    df["period"] = df["period"].astype(str).str.strip()
+    df["period_year"] = pd.to_numeric(df["period"].str[:4], errors="coerce")
+    df["period_type"] = (
+        df["period"]
+        .str[4:6]
+        .map(
+            {
+                "KW": "quarter",
+                "JJ": "year",
+            }
+        )
+    )
+    df["period_quarter"] = pd.to_numeric(df["period"].str[-2:], errors="coerce")
+    df.loc[df["period_type"] == "year", "period_quarter"] = None
+
+    numeric_columns = [
+        "price_index_purchase_prices",
+        "change_price_previous_period",
+        "change_price_previous_year",
+        "number_of_dwellings_sold",
+        "change_sales_previous_period",
+        "change_sales_previous_year",
+        "average_purchase_price",
+        "total_value_purchase_prices",
+    ]
+
+    for column in numeric_columns:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+
+    df = df.dropna(subset=["cbs_id", "region_code", "period"])
+    df["ingested_at"] = datetime.now(timezone.utc)
 
     log.info("Transformed %d rows", len(df))
     return df
 
 
-def run():
+def run() -> None:
     """Run the full pipeline: fetch -> validate -> transform -> store."""
     log.info("Pipeline starting")
 
     raw = fetch_data()
-    readings = validate(raw)
+    records, errors = validate(raw)
 
-    if not readings:
+    if errors:
+        log.warning(
+            "Continuing with %d valid records after validation errors", len(records)
+        )
+
+    if not records:
         log.error("No valid records to store")
         sys.exit(1)
 
-    df = transform(readings)
-    insert_readings(df)
+    df = transform(records)
+
+    if df.empty:
+        log.error("No transformed rows to store")
+
+        sys.exit(1)
+
+    insert_housing_records(df)
     upload_raw_json(raw)
 
     log.info("Pipeline finished: %d records stored", len(df))
 
 
 if __name__ == "__main__":
-    # Fail fast if required env vars are missing
-    for var in ["POSTGRES_URL", "AZURE_STORAGE_CONNECTION_STRING"]:
+    required_env_vars = [
+        "POSTGRES_URL",
+        "AZURE_STORAGE_CONNECTION_STRING",
+    ]
+
+    for var in required_env_vars:
         if var not in os.environ:
             log.error("Missing required environment variable: %s", var)
             sys.exit(1)
