@@ -123,6 +123,7 @@ def transform(records: list[CBSHousingRecord]) -> pd.DataFrame:
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
     df = df.dropna(subset=["cbs_id", "region_code", "period"])
+    df = df.sort_values("cbs_id").tail(500)
     df["ingested_at"] = datetime.now(timezone.utc)
 
     log.info("Transformed %d rows", len(df))

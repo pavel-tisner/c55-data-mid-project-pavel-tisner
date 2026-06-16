@@ -11,6 +11,7 @@ import pandas as pd
 import psycopg2
 from azure.core.exceptions import ResourceExistsError
 from azure.storage.blob import BlobServiceClient
+from psycopg2.extras import execute_values
 
 log = logging.getLogger(__name__)
 
@@ -20,10 +21,15 @@ def insert_housing_records(df: pd.DataFrame) -> None:
     db_url = os.environ["POSTGRES_URL"]
     schema = os.environ.get("DB_SCHEMA", "public")
 
+    rows = [_row_to_values(row) for _, row in df.iterrows()]
+
     with closing(psycopg2.connect(db_url)) as conn:
         with conn.cursor() as cur:
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")  # noqa: S608
             cur.execute(f"SET search_path TO {schema}")  # noqa: S608
+            cur.execute("""
+                DROP TABLE IF EXISTS cbs_housing_purchase_prices
+            """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS cbs_housing_purchase_prices (
                     id SERIAL PRIMARY KEY,
@@ -31,6 +37,7 @@ def insert_housing_records(df: pd.DataFrame) -> None:
                     region_code TEXT NOT NULL,
                     period TEXT NOT NULL,
                     period_year INTEGER,
+                    period_type TEXT,
                     period_quarter INTEGER,
                     price_index_purchase_prices DOUBLE PRECISION,
                     change_price_previous_period DOUBLE PRECISION,
@@ -44,47 +51,30 @@ def insert_housing_records(df: pd.DataFrame) -> None:
                 )
             """)
 
-            for _, row in df.iterrows():
-                cur.execute(
-                    """
-                    INSERT INTO cbs_housing_purchase_prices (
-                        cbs_id,
-                        region_code,
-                        period,
-                        period_year,
-                        period_quarter,
-                        price_index_purchase_prices,
-                        change_price_previous_period,
-                        change_price_previous_year,
-                        number_of_dwellings_sold,
-                        change_sales_previous_period,
-                        change_sales_previous_year,
-                        average_purchase_price,
-                        total_value_purchase_prices,
-                        ingested_at
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        int(row["cbs_id"]),
-                        row["region_code"],
-                        row["period"],
-                        _none_if_nan(row["period_year"]),
-                        row["period_type"],
-                        _none_if_nan(row["period_quarter"]),
-                        _none_if_nan(row["price_index_purchase_prices"]),
-                        _none_if_nan(row["change_price_previous_period"]),
-                        _none_if_nan(row["change_price_previous_year"]),
-                        _none_if_nan(row["number_of_dwellings_sold"]),
-                        _none_if_nan(row["change_sales_previous_period"]),
-                        _none_if_nan(row["change_sales_previous_year"]),
-                        _none_if_nan(row["average_purchase_price"]),
-                        _none_if_nan(row["total_value_purchase_prices"]),
-                        row["ingested_at"].to_pydatetime()
-                        if hasattr(row["ingested_at"], "to_pydatetime")
-                        else row["ingested_at"],
-                    ),
+            execute_values(
+                cur,
+                """
+                INSERT INTO cbs_housing_purchase_prices (
+                    cbs_id,
+                    region_code,
+                    period,
+                    period_year,
+                    period_type,
+                    period_quarter,
+                    price_index_purchase_prices,
+                    change_price_previous_period,
+                    change_price_previous_year,
+                    number_of_dwellings_sold,
+                    change_sales_previous_period,
+                    change_sales_previous_year,
+                    average_purchase_price,
+                    total_value_purchase_prices,
+                    ingested_at
                 )
+                VALUES %s
+                """,
+                rows,
+            )
 
         conn.commit()
 
@@ -116,6 +106,29 @@ def upload_raw_json(raw_data: list[dict[str, Any]]) -> None:
         overwrite=True,
     )
     log.info("Uploaded raw data to blob: %s", blob_name)
+
+
+def _row_to_values(row: pd.Series) -> tuple:
+    """Convert one DataFrame row to values for Postgres insert."""
+    return (
+        int(row["cbs_id"]),
+        row["region_code"],
+        row["period"],
+        _none_if_nan(row["period_year"]),
+        row["period_type"],
+        _none_if_nan(row["period_quarter"]),
+        _none_if_nan(row["price_index_purchase_prices"]),
+        _none_if_nan(row["change_price_previous_period"]),
+        _none_if_nan(row["change_price_previous_year"]),
+        _none_if_nan(row["number_of_dwellings_sold"]),
+        _none_if_nan(row["change_sales_previous_period"]),
+        _none_if_nan(row["change_sales_previous_year"]),
+        _none_if_nan(row["average_purchase_price"]),
+        _none_if_nan(row["total_value_purchase_prices"]),
+        row["ingested_at"].to_pydatetime()
+        if hasattr(row["ingested_at"], "to_pydatetime")
+        else row["ingested_at"],
+    )
 
 
 def _none_if_nan(value):
