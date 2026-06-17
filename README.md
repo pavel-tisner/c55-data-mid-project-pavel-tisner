@@ -62,6 +62,8 @@ The pipeline prepares the following analysis-ready columns:
 * `number_of_dwellings_sold` — transaction volume
 * `change_price_previous_period` — price change compared with the previous period
 * `change_sales_previous_period` — sales volume change compared with the previous period
+* `change_price_previous_year` — price change compared with the same period in the previous year
+* `change_sales_previous_year` — sales volume change compared with the same period in the previous year
 * `period_year`, `period_type`, `period_quarter` — parsed time fields for yearly and quarterly analysis
 
 A possible market signal can be interpreted as follows:
@@ -73,6 +75,45 @@ A possible market signal can be interpreted as follows:
 - **Price down + transactions up**: the market may be becoming more accessible and liquid. Buyers may find more opportunities. Sellers can still sell if pricing is realistic.
 
 - **Price down + transactions down**: weak market signal. Buyers may have more bargaining power, but should watch market risk. Sellers may need more flexibility.
+
+### Example SQL query
+
+The example below uses quarterly records and year-over-year changes. This avoids comparing seasonal quarters directly, for example Q1 against Q4.
+
+```sql
+SELECT
+    region_name,
+    period,
+    period_year::text AS period_year,
+    'Q' || period_quarter::text AS period_label,
+    average_purchase_price,
+    number_of_dwellings_sold,
+    change_price_previous_year,
+    change_sales_previous_year,
+    CASE
+        WHEN change_price_previous_year > 0
+             AND change_sales_previous_year > 0
+            THEN 'prices up, transactions up: strong active market'
+        WHEN change_price_previous_year > 0
+             AND change_sales_previous_year < 0
+            THEN 'prices up, transactions down: weaker liquidity'
+        WHEN change_price_previous_year < 0
+             AND change_sales_previous_year > 0
+            THEN 'prices down, transactions up: more accessible/liquid market'
+        WHEN change_price_previous_year < 0
+             AND change_sales_previous_year < 0
+            THEN 'prices down, transactions down: weak market'
+        ELSE 'mixed or missing year-over-year data'
+    END AS market_signal
+FROM dev_pavel_tisner.cbs_housing_purchase_prices
+WHERE period_type = 'quarter'
+  AND average_purchase_price IS NOT NULL
+  AND number_of_dwellings_sold IS NOT NULL
+ORDER BY
+    period_year DESC,
+    period_quarter DESC,
+    region_name;
+```
 
 These signals are possible interpretations, not proof of causality. Housing market dynamics also depend on interest rates, mortgage rules, supply, income, dwelling types, and regional differences.
 
@@ -206,7 +247,7 @@ az containerapp job execution list \
 Successful execution:
 
 ```text
-cbs-housing-pavel-nu3xdyf  Succeeded
+cbs-housing-pavel-zheh8po  Succeeded
 ```
 
 Check job logs:
@@ -215,7 +256,7 @@ Check job logs:
 az containerapp job logs show \
   --name cbs-housing-pavel \
   --resource-group rg-hyf-data \
-  --execution cbs-housing-pavel-nu3xdyf \
+  --execution cbs-housing-pavel-zheh8po \
   --container cbs-housing-pavel
 ```
 
@@ -223,6 +264,7 @@ Postgres verification result:
 
 ```text
 row_count: 500
+rows_with_region_name: 500
 period_range: ('1995JJ00', '2026KW01')
 ```
 
@@ -230,13 +272,14 @@ Blob verification result:
 
 ```text
 blob_count: 6
-cbs_housing/2026-06-17_130927.json 1212498
+cbs_housing/2026-06-17_190932.json 1212498
 ```
 
 Evidence files are stored in the `docs/` directory:
 
 ```text
 docs/execution_history.txt
+docs/job_logs_region_names.txt
 docs/job_logs.txt
 docs/postgres_verification.txt
 docs/blob_verification.txt
