@@ -9,7 +9,7 @@ import pandas as pd
 import requests
 from pydantic import ValidationError
 
-from src.models import CBSHousingRecord
+from src.models import CBSHousingRecord, CBSRegionRecord
 from src.storage import insert_housing_records, upload_raw_json
 
 from dotenv import load_dotenv
@@ -24,6 +24,7 @@ logging.getLogger("azure").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 DEFAULT_API_URL = "https://opendata.cbs.nl/ODataApi/odata/85792ENG/TypedDataSet"
+DEFAULT_REGIONS_URL = "https://opendata.cbs.nl/ODataApi/odata/85792ENG/Regions"
 
 
 def fetch_data() -> list[dict]:
@@ -37,6 +38,20 @@ def fetch_data() -> list[dict]:
     records = payload.get("value", [])
 
     log.info("Fetched %d records from CBS API", len(records))
+    return records
+
+
+def fetch_region_data() -> list[dict]:
+    """Fetch region lookup records from the CBS Regions endpoint."""
+    regions_url = os.environ.get("REGIONS_URL", DEFAULT_REGIONS_URL)
+
+    response = requests.get(regions_url, timeout=30)
+    response.raise_for_status()
+
+    payload = response.json()
+    records = payload.get("value", [])
+
+    log.info("Fetched %d region records from CBS API", len(records))
     return records
 
 
@@ -64,7 +79,38 @@ def validate(raw_records: list[dict]) -> tuple[list[CBSHousingRecord], list[dict
     return valid, errors
 
 
-def transform(records: list[CBSHousingRecord]) -> pd.DataFrame:
+def validate_regions(raw_regions: list[dict]) -> list[CBSRegionRecord]:
+    """Validate CBS region lookup records."""
+    valid_regions = []
+
+    for record in raw_regions:
+        valid_regions.append(CBSRegionRecord(**record))
+
+    log.info("Validated %d region records", len(valid_regions))
+    return valid_regions
+
+
+def build_region_lookup(region_records: list[CBSRegionRecord]) -> pd.DataFrame:
+    """Build a region lookup DataFrame with code and human-readable name."""
+    rows = [
+        {
+            "region_code": region.Key,
+            "region_name": region.Title,
+        }
+        for region in region_records
+    ]
+
+    lookup_df = pd.DataFrame(rows)
+    lookup_df = lookup_df.drop_duplicates(subset=["region_code"])
+
+    log.info("Built region lookup with %d rows", len(lookup_df))
+    return lookup_df
+
+
+def transform(
+    records: list[CBSHousingRecord],
+    region_lookup: pd.DataFrame,
+) -> pd.DataFrame:
     """Transform validated CBS records using pandas.
 
     Real transformation work:
@@ -93,6 +139,9 @@ def transform(records: list[CBSHousingRecord]) -> pd.DataFrame:
     )
 
     df["region_code"] = df["region_code"].astype(str).str.strip()
+    df = df.merge(region_lookup, on="region_code", how="left")
+    df["region_name"] = df["region_name"].fillna(df["region_code"])
+
     df["period"] = df["period"].astype(str).str.strip()
     df["period_year"] = pd.to_numeric(df["period"].str[:4], errors="coerce")
     df["period_type"] = (
@@ -135,7 +184,11 @@ def run() -> None:
     log.info("Pipeline starting")
 
     raw = fetch_data()
+    raw_regions = fetch_region_data()
+
     records, errors = validate(raw)
+    region_records = validate_regions(raw_regions)
+    region_lookup = build_region_lookup(region_records)
 
     if errors:
         log.warning(
@@ -146,7 +199,7 @@ def run() -> None:
         log.error("No valid records to store")
         sys.exit(1)
 
-    df = transform(records)
+    df = transform(records, region_lookup)
 
     if df.empty:
         log.error("No transformed rows to store")

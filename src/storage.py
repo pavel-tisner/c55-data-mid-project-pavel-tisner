@@ -36,6 +36,7 @@ def insert_housing_records(df: pd.DataFrame) -> None:
                     id SERIAL PRIMARY KEY,
                     cbs_id INTEGER NOT NULL,
                     region_code TEXT NOT NULL,
+                    region_name TEXT,
                     period TEXT NOT NULL,
                     period_year INTEGER,
                     period_type TEXT,
@@ -58,6 +59,7 @@ def insert_housing_records(df: pd.DataFrame) -> None:
                 INSERT INTO cbs_housing_purchase_prices (
                     cbs_id,
                     region_code,
+                    region_name,
                     period,
                     period_year,
                     period_type,
@@ -119,6 +121,7 @@ def _row_to_values(row: pd.Series) -> tuple:
     return (
         int(row["cbs_id"]),
         row["region_code"],
+        row["region_name"],
         row["period"],
         _none_if_nan(row["period_year"]),
         row["period_type"],
