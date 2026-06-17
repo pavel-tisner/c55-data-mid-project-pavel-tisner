@@ -4,21 +4,77 @@
 
 This project is a data engineering pipeline for Dutch housing purchase price data from the CBS Open Data API.
 
-The pipeline fetches CBS housing records, validates them with Pydantic, transforms them with pandas, stores transformed rows in Azure Postgres, and uploads the raw API response to Azure Blob Storage.
+The pipeline fetches CBS housing records and CBS region lookup records, validates both with Pydantic, transforms and enriches the data with pandas, stores transformed rows in Azure Postgres, and uploads the raw housing API response to Azure Blob Storage.
+
+The region lookup adds a human-readable `region_name` column while keeping `region_code` as the stable CBS source identifier.
 
 ## Data source
 
-CBS Open Data API:
+CBS Open Data API, dataset `85792ENG`.
+
+Main housing records:
 
 ```text
 https://opendata.cbs.nl/ODataApi/odata/85792ENG/TypedDataSet
 ```
 
+Region lookup records:
+
+```text
+https://opendata.cbs.nl/ODataApi/odata/85792ENG/Regions
+```
+
 ## Architecture
 
 ```text
-CBS OData API ──► pipeline.py ──► Pydantic validation ──► pandas transformation (rename CBS technical columns, parse period_year, parse period_type, parse period_quarter, convert numeric columns) ──► Azure Postgres (schema: dev_pavel_tisner, table: cbs_housing_purchase_prices) ──► Azure Blob Storage (container: raw, prefix: cbs_housing)
+CBS TypedDataSet API ──► housing records
+CBS Regions API ───────► region lookup
+                              │
+                              ▼
+pipeline.py
+  ├──► Pydantic validation
+  │       - validate housing records
+  │       - validate region lookup records
+  ├──► pandas transformation
+  │       - rename CBS technical columns
+  │       - parse period_year
+  │       - parse period_type
+  │       - parse period_quarter
+  │       - convert numeric columns
+  │       - enrich housing records with region_name
+  ├──► Azure Postgres
+  │       schema: dev_pavel_tisner
+  │       table: cbs_housing_purchase_prices
+  └──► Azure Blob Storage
+          container: raw
+          prefix: cbs_housing
 ```
+
+## Possible analysis: housing market signal
+
+The transformed table can be used to compare price movement with transaction volume. This is useful because housing prices alone do not tell the full story. A market where prices are rising and transactions are also rising is different from a market where prices are rising but fewer dwellings are being sold.
+
+The pipeline prepares the following analysis-ready columns:
+
+* `region_code` — stable CBS region identifier
+* `region_name` — human-readable region name from the CBS Regions lookup endpoint
+* `average_purchase_price` — average purchase price of dwellings
+* `number_of_dwellings_sold` — transaction volume
+* `change_price_previous_period` — price change compared with the previous period
+* `change_sales_previous_period` — sales volume change compared with the previous period
+* `period_year`, `period_type`, `period_quarter` — parsed time fields for yearly and quarterly analysis
+
+A possible market signal can be interpreted as follows:
+
+- **Price up + transactions up**: strong active market. Buyers may face more competition and may need to move faster. Sellers are usually in a stronger position.
+
+- **Price up + transactions down**: prices are still rising, but liquidity may be weakening. Buyers can question asking prices more carefully. Sellers should avoid overpricing.
+
+- **Price down + transactions up**: the market may be becoming more accessible and liquid. Buyers may find more opportunities. Sellers can still sell if pricing is realistic.
+
+- **Price down + transactions down**: weak market signal. Buyers may have more bargaining power, but should watch market risk. Sellers may need more flexibility.
+
+These signals are possible interpretations, not proof of causality. Housing market dynamics also depend on interest rates, mortgage rules, supply, income, dwelling types, and regional differences.
 
 ## Run locally
 
@@ -28,6 +84,7 @@ My local `.env` uses exported variables:
 
 ```bash
 export API_URL="https://opendata.cbs.nl/ODataApi/odata/85792ENG/TypedDataSet"
+export REGIONS_URL="https://opendata.cbs.nl/ODataApi/odata/85792ENG/Regions"
 export POSTGRES_URL="$(az keyvault secret show --vault-name kv-hyf-data --name postgres-url --query value -o tsv)"
 export AZURE_STORAGE_CONNECTION_STRING="$(az keyvault secret show --vault-name kv-hyf-data --name storage-connection-string --query value -o tsv)"
 export DB_SCHEMA="dev_pavel_tisner"
@@ -44,17 +101,17 @@ Load environment variables:
 source .env
 ```
 
-# Install dependencies
+### Install dependencies
 ```bash
 uv sync
 ```
 
-# Run directly (without Docker)
+### Run directly (without Docker)
 ```bash
 uv run python -m src.pipeline
 ```
 
-# Or build and run with Docker
+### Or build and run with Docker
 ```bash
 docker build --platform linux/amd64 \
   -t hyfregistry.azurecr.io/cbs-housing-pipeline:latest .
@@ -121,6 +178,7 @@ az containerapp job update \
   --resource-group rg-hyf-data \
   --set-env-vars \
     API_URL="$API_URL" \
+    REGIONS_URL="$REGIONS_URL" \
     POSTGRES_URL=secretref:postgres-url \
     AZURE_STORAGE_CONNECTION_STRING_B64=secretref:storage-connection-string-b64 \
     DB_SCHEMA="$DB_SCHEMA" \

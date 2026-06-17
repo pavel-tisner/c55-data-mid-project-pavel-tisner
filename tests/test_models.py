@@ -2,7 +2,7 @@
 
 import pytest
 from pydantic import ValidationError
-from src.models import CBSHousingRecord
+from src.models import CBSHousingRecord, CBSRegionRecord
 
 
 def test_valid_cbs_housing_quarter_record():
@@ -81,4 +81,24 @@ def test_negative_average_purchase_price_is_rejected():
             NumberOfDwellingsSold_4=30734,
             AveragePurchasePrice_7=-1,
             TotalValuePurchasePrices_8=2760,
+        )
+
+
+def test_valid_cbs_region_record():
+    """A valid CBS region lookup record should be accepted and stripped."""
+    record = CBSRegionRecord(
+        Key="GM0363  ",
+        Title="Amsterdam",
+    )
+
+    assert record.Key == "GM0363"
+    assert record.Title == "Amsterdam"
+
+
+def test_empty_region_title_is_rejected():
+    """Region title is required for human-readable region names."""
+    with pytest.raises(ValidationError):
+        CBSRegionRecord(
+            Key="GM0363  ",
+            Title="",
         )

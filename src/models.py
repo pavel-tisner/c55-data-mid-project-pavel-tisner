@@ -61,3 +61,32 @@ class CBSHousingRecord(BaseModel):
         raise ValueError(
             f"period must be a CBS quarter like 1995KW01 or year like 1995JJ00, got: {value}"
         )
+
+
+class CBSRegionRecord(BaseModel):
+    """A single region lookup record from the CBS Regions endpoint."""
+
+    Key: str = Field(min_length=1)
+    Title: str = Field(min_length=1)
+
+    @field_validator("Key")
+    @classmethod
+    def key_must_be_stripped(cls, value: str) -> str:
+        """Strip whitespace from CBS region lookup keys."""
+        stripped = value.strip()
+
+        if not stripped:
+            raise ValueError("region key cannot be empty")
+
+        return stripped
+
+    @field_validator("Title")
+    @classmethod
+    def title_must_be_stripped(cls, value: str) -> str:
+        """Strip whitespace from CBS region names."""
+        stripped = value.strip()
+
+        if not stripped:
+            raise ValueError("region title cannot be empty")
+
+        return stripped
