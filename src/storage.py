@@ -1,5 +1,6 @@
 """Storage functions for Postgres and Blob Storage."""
 
+import base64
 import json
 import logging
 import os
@@ -83,7 +84,12 @@ def insert_housing_records(df: pd.DataFrame) -> None:
 
 def upload_raw_json(raw_data: list[dict[str, Any]]) -> None:
     """Upload raw CBS API response records to Azure Blob Storage as JSON."""
-    conn_str = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+    conn_str_b64 = os.environ.get("AZURE_STORAGE_CONNECTION_STRING_B64")
+    if conn_str_b64:
+        conn_str = base64.b64decode(conn_str_b64).decode("utf-8")
+    else:
+        conn_str = os.environ["AZURE_STORAGE_CONNECTION_STRING"]
+
     container_name = os.environ.get("BLOB_CONTAINER", "raw")
 
     blob_prefix = os.environ.get("BLOB_PREFIX", "cbs_housing")

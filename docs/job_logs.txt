@@ -1,0 +1,14 @@
+{"TimeStamp":"2026-06-17T13:10:46.05304","Log":"Connecting to the container 'cbs-housing-pavel'..."}
+{"TimeStamp":"2026-06-17T13:10:46.10023","Log":"Successfully Connected to container: 'cbs-housing-pavel' [Execution: 'cbs-housing-pavel-nu3xdyf', Replica: 'cbs-housing-pavel-nu3xdyf-b2tfg']"}
+{"TimeStamp":"2026-06-17T13:09:22.1969073+00:00","Log":"pygments (1.2MiB)"}
+{"TimeStamp":"2026-06-17T13:09:22.1973135+00:00","Log":"ruff (10.8MiB)"}
+{"TimeStamp":"2026-06-17T13:09:22.4267854+00:00","Log":"Downloaded ruff"}
+{"TimeStamp":"2026-06-17T13:09:22.5269217+00:00","Log":"Downloaded pygments"}
+{"TimeStamp":"2026-06-17T13:09:22.5990114+00:00","Log":"6 packages in 71ms"}
+{"TimeStamp":"2026-06-17T13:09:26.6247146+00:00","Log":"13:09:26,624 INFO Pipeline starting"}
+{"TimeStamp":"2026-06-17T13:09:26.9274281+00:00","Log":"13:09:26,927 INFO Fetched 3276 records from CBS API"}
+{"TimeStamp":"2026-06-17T13:09:26.9480274+00:00","Log":"13:09:26,946 INFO Validated 3276 / 3276 records"}
+{"TimeStamp":"2026-06-17T13:09:27.005959+00:00","Log":"13:09:27,002 INFO Transformed 500 rows"}
+{"TimeStamp":"2026-06-17T13:09:27.5115383+00:00","Log":"13:09:27,511 INFO Inserted 500 rows into dev_pavel_tisner.cbs_housing_purchase_prices"}
+{"TimeStamp":"2026-06-17T13:09:27.5924215+00:00","Log":"13:09:27,592 INFO Uploaded raw data to blob: cbs_housing/2026-06-17_130927.json"}
+{"TimeStamp":"2026-06-17T13:09:27.5924581+00:00","Log":"13:09:27,592 INFO Pipeline finished: 500 records stored"}

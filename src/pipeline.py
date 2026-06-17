@@ -160,14 +160,18 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    required_env_vars = [
-        "POSTGRES_URL",
-        "AZURE_STORAGE_CONNECTION_STRING",
-    ]
+    if not os.environ.get("POSTGRES_URL"):
+        log.error("Missing required environment variable: POSTGRES_URL")
+        sys.exit(1)
 
-    for var in required_env_vars:
-        if var not in os.environ:
-            log.error("Missing required environment variable: %s", var)
-            sys.exit(1)
+    if not (
+        os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+        or os.environ.get("AZURE_STORAGE_CONNECTION_STRING_B64")
+    ):
+        log.error(
+            "Missing required environment variable: "
+            "AZURE_STORAGE_CONNECTION_STRING or AZURE_STORAGE_CONNECTION_STRING_B64"
+        )
+        sys.exit(1)
 
     run()

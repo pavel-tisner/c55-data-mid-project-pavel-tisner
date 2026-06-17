@@ -1,0 +1,2 @@
+row_count: 500
+period_range: ('1995JJ00', '2026KW01')
