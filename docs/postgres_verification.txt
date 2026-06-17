@@ -1,2 +1,17 @@
 row_count: 500
+rows_with_region_name: 500
 period_range: ('1995JJ00', '2026KW01')
+
+sample_rows_with_region_name:
+region_code | region_name | period | average_purchase_price | number_of_dwellings_sold
+--- | --- | --- | --- | ---
+GM0363 | Amsterdam | 2026KW01 | 619117 | 3135
+GM0599 | Rotterdam | 2026KW01 | 429773 | 1856
+GM0518 | 's-Gravenhage (The Hague) (municipality) | 2026KW01 | 473541 | 1838
+GM0344 | Utrecht (municipality) | 2026KW01 | 574179 | 1351
+GM0363 | Amsterdam | 2025KW04 | 635605 | 4249
+GM0599 | Rotterdam | 2025KW04 | 417489 | 2349
+GM0518 | 's-Gravenhage (The Hague) (municipality) | 2025KW04 | 465918 | 2303
+GM0344 | Utrecht (municipality) | 2025KW04 | 533397 | 1727
+GM0363 | Amsterdam | 2025KW03 | 640338 | 3931
+GM0599 | Rotterdam | 2025KW03 | 421945 | 2184
