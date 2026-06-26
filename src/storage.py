@@ -28,6 +28,11 @@ def insert_housing_records(df: pd.DataFrame) -> None:
         with conn.cursor() as cur:
             cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")  # noqa: S608
             cur.execute(f"SET search_path TO {schema}")  # noqa: S608
+            # DROP + CREATE replaces the table on every run.
+            # This is intentional: the pipeline stores the latest 500 CBS records
+            # as a snapshot, not a growing history. Each run reflects the current
+            # API state. If you want historical accumulation, replace this with
+            # ON CONFLICT (cbs_id, region_code, period) DO UPDATE.
             cur.execute("""
                 DROP TABLE IF EXISTS cbs_housing_purchase_prices
             """)

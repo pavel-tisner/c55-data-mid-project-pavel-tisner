@@ -80,11 +80,14 @@ def validate(raw_records: list[dict]) -> tuple[list[CBSHousingRecord], list[dict
 
 
 def validate_regions(raw_regions: list[dict]) -> list[CBSRegionRecord]:
-    """Validate CBS region lookup records."""
+    """Validate CBS region lookup records, skipping invalid entries."""
     valid_regions = []
 
     for record in raw_regions:
-        valid_regions.append(CBSRegionRecord(**record))
+        try:
+            valid_regions.append(CBSRegionRecord(**record))
+        except ValidationError as error:
+            log.warning("Skipping invalid region record: %s", error)
 
     log.info("Validated %d region records", len(valid_regions))
     return valid_regions
