@@ -9,6 +9,7 @@ log = logging.getLogger(__name__)
 DEFAULT_API_URL = "https://opendata.cbs.nl/ODataApi/odata/85792ENG/TypedDataSet"
 DEFAULT_REGIONS_URL = "https://opendata.cbs.nl/ODataApi/odata/85792ENG/Regions"
 
+
 def fetch_data() -> list[dict]:
     """Fetch housing purchase price records from the CBS OData API."""
     api_url = os.environ.get("API_URL", DEFAULT_API_URL)
@@ -21,6 +22,7 @@ def fetch_data() -> list[dict]:
 
     log.info("Fetched %d records from CBS API", len(records))
     return records
+
 
 def fetch_region_data() -> list[dict]:
     """Fetch region lookup records from the CBS Regions endpoint."""

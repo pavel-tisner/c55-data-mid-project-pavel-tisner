@@ -6,6 +6,7 @@ from src.models import CBSHousingRecord, CBSRegionRecord
 
 log = logging.getLogger(__name__)
 
+
 def validate(raw_records: list[dict]) -> tuple[list[CBSHousingRecord], list[dict]]:
     """Validate raw CBS records and accumulate per-record errors."""
     valid = []

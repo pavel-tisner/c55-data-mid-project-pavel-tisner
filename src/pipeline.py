@@ -20,6 +20,7 @@ logging.basicConfig(
 logging.getLogger("azure").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
+
 def run() -> None:
     """Run the full pipeline: fetch -> validate -> transform -> store."""
     log.info("Pipeline starting")

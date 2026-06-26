@@ -7,6 +7,7 @@ from src.models import CBSHousingRecord, CBSRegionRecord
 
 log = logging.getLogger(__name__)
 
+
 def build_region_lookup(region_records: list[CBSRegionRecord]) -> pd.DataFrame:
     """Build a region lookup DataFrame with code and human-readable name."""
     rows = [
@@ -22,6 +23,7 @@ def build_region_lookup(region_records: list[CBSRegionRecord]) -> pd.DataFrame:
 
     log.info("Built region lookup with %d rows", len(lookup_df))
     return lookup_df
+
 
 def transform(
     records: list[CBSHousingRecord],
