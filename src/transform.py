@@ -25,6 +25,41 @@ def build_region_lookup(region_records: list[CBSRegionRecord]) -> pd.DataFrame:
     return lookup_df
 
 
+def add_rolling_market_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """Add rolling 4-quarter market metrics by region.
+
+    The rolling metrics are calculated only for quarterly records.
+    Yearly records remain in the DataFrame, but their rolling values stay empty.
+    """
+    df = df.copy()
+
+    df["rolling_4q_avg_price"] = None
+    df["rolling_4q_sales"] = None
+
+    quarterly_mask = df["period_type"] == "quarter"
+
+    quarterly_df = df.loc[quarterly_mask].copy()
+    quarterly_df = quarterly_df.sort_values(
+        ["region_code", "period_year", "period_quarter"]
+    )
+
+    quarterly_df["rolling_4q_avg_price"] = quarterly_df.groupby("region_code")[
+        "average_purchase_price"
+    ].transform(lambda series: series.rolling(window=4, min_periods=4).mean())
+
+    quarterly_df["rolling_4q_sales"] = quarterly_df.groupby("region_code")[
+        "number_of_dwellings_sold"
+    ].transform(lambda series: series.rolling(window=4, min_periods=4).mean())
+
+    df.loc[quarterly_df.index, "rolling_4q_avg_price"] = quarterly_df[
+        "rolling_4q_avg_price"
+    ]
+    df.loc[quarterly_df.index, "rolling_4q_sales"] = quarterly_df["rolling_4q_sales"]
+
+    log.info("Added rolling 4-quarter market metrics")
+    return df
+
+
 def transform(
     records: list[CBSHousingRecord],
     region_lookup: pd.DataFrame,
@@ -82,7 +117,8 @@ def transform(
         df[column] = pd.to_numeric(df[column], errors="coerce")
 
     df = df.dropna(subset=["cbs_id", "region_code", "period"])
-    df = df.sort_values("cbs_id").tail(500)
+    df = df.sort_values("cbs_id")
+    df = add_rolling_market_metrics(df)
     df["ingested_at"] = datetime.now(timezone.utc)
 
     log.info("Transformed %d rows", len(df))

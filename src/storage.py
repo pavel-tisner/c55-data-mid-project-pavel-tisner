@@ -26,13 +26,12 @@ def insert_housing_records(df: pd.DataFrame) -> None:
 
     with closing(psycopg2.connect(db_url)) as conn:
         with conn.cursor() as cur:
-            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")  # noqa: S608
+            # The schema is expected to exist and be granted to the current Postgres user.
             cur.execute(f"SET search_path TO {schema}")  # noqa: S608
             # DROP + CREATE replaces the table on every run.
-            # This is intentional: the pipeline stores the latest 500 CBS records
-            # as a snapshot, not a growing history. Each run reflects the current
-            # API state. If you want historical accumulation, replace this with
-            # ON CONFLICT (cbs_id, region_code, period) DO UPDATE.
+            # This is intentional: the pipeline stores the latest transformed CBS
+            # dataset as a snapshot, not a growing historical accumulation.
+            # Each run reflects the current API state. If you want historical accumulation, replace this with ON CONFLICT (cbs_id, region_code, period) DO UPDATE.
             cur.execute("""
                 DROP TABLE IF EXISTS cbs_housing_purchase_prices
             """)
@@ -54,6 +53,8 @@ def insert_housing_records(df: pd.DataFrame) -> None:
                     change_sales_previous_year DOUBLE PRECISION,
                     average_purchase_price INTEGER,
                     total_value_purchase_prices INTEGER,
+                    rolling_4q_avg_price DOUBLE PRECISION,
+                    rolling_4q_sales DOUBLE PRECISION,
                     ingested_at TIMESTAMP NOT NULL
                 )
             """)
@@ -77,6 +78,8 @@ def insert_housing_records(df: pd.DataFrame) -> None:
                     change_sales_previous_year,
                     average_purchase_price,
                     total_value_purchase_prices,
+                    rolling_4q_avg_price,
+                    rolling_4q_sales,
                     ingested_at
                 )
                 VALUES %s
@@ -139,6 +142,8 @@ def _row_to_values(row: pd.Series) -> tuple:
         _none_if_nan(row["change_sales_previous_year"]),
         _none_if_nan(row["average_purchase_price"]),
         _none_if_nan(row["total_value_purchase_prices"]),
+        _none_if_nan(row["rolling_4q_avg_price"]),
+        _none_if_nan(row["rolling_4q_sales"]),
         row["ingested_at"].to_pydatetime()
         if hasattr(row["ingested_at"], "to_pydatetime")
         else row["ingested_at"],
