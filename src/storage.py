@@ -26,7 +26,7 @@ def insert_housing_records(df: pd.DataFrame) -> None:
 
     with closing(psycopg2.connect(db_url)) as conn:
         with conn.cursor() as cur:
-            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")  # noqa: S608
+            # The schema is expected to exist and be granted to the current Postgres user.
             cur.execute(f"SET search_path TO {schema}")  # noqa: S608
             # DROP + CREATE replaces the table on every run.
             # This is intentional: the pipeline stores the latest transformed CBS
